@@ -59,7 +59,9 @@ export function buildRequest(report, openReports) {
 }
 
 export async function callClaude(env, body) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
+  // Tests may point at a local mock; anything else always goes to Anthropic.
+  const base = env.ANTHROPIC_API_BASE?.startsWith('http://127.0.0.1:') ? env.ANTHROPIC_API_BASE : 'https://api.anthropic.com';
+  const r = await fetch(`${base}/v1/messages`, {
     method: 'POST',
     headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify(body),

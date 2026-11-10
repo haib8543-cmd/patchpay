@@ -92,6 +92,10 @@
         <label for="pp-text" style="display:block;font-weight:600;margin-bottom:6px">What went wrong?</label>
         <textarea id="pp-text" maxlength="${MAX_TEXT}" required placeholder="e.g. The paddle froze when I hit the right wall"></textarea>
         <div class="pp-count" aria-live="polite"><span id="pp-n">0</span>/${MAX_TEXT}</div>
+        <label for="pp-email" style="display:block;font-weight:600;margin:8px 0 6px">PayPal email for your bounty <span style="font-weight:400;color:#5b6573">(optional, sandbox)</span></label>
+        <input id="pp-email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com"
+          style="width:100%;min-height:44px;padding:0 10px;border:1px solid #cfd6e0;border-radius:10px;font:16px system-ui,sans-serif;box-sizing:border-box">
+        <p style="font-size:13px;margin:6px 0 0">Only used to send the bounty. You can add it later from your report page.</p>
         <div class="pp-attach">
           ${draft.screenshot ? `<img src="${draft.screenshot}" alt="Screenshot of the game at the moment you opened this report">` : ''}
           <div>Attached automatically:
@@ -111,10 +115,11 @@
     const text = dialog.querySelector('#pp-text');
     text.addEventListener('input', () => { dialog.querySelector('#pp-n').textContent = text.value.length; });
     dialog.querySelector('#pp-cancel').addEventListener('click', () => dialog.close());
-    dialog.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); send(text.value.trim()); });
+    const email = dialog.querySelector('#pp-email');
+    dialog.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); send(text.value.trim(), email.value.trim()); });
   }
 
-  async function send(text) {
+  async function send(text, email) {
     const button = dialog.querySelector('#pp-send');
     const error = dialog.querySelector('#pp-error');
     if (!text) { error.textContent = 'Please describe the bug.'; return; }
@@ -125,14 +130,19 @@
       const r = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ game, text, screenshot: draft.screenshot, console: draft.console.join('\n'), state: draft.state }),
+        body: JSON.stringify({ game, text, email: email || undefined, screenshot: draft.screenshot, console: draft.console.join('\n'), state: draft.state }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || `Server error (${r.status})`);
       dialog.innerHTML = `
         <h2 id="pp-title">Thanks, report received</h2>
         <p>Report <strong>#${data.id.slice(0, 8)}</strong> is being triaged. If the developer approves it, your bounty is paid through PayPal.</p>
+        <p>Keep this private link to follow your report${email ? '' : ' and add your PayPal email later'}:</p>
+        <p><a id="pp-link" target="_blank" rel="noopener"></a></p>
         <div class="pp-row"><button type="button" class="pp-primary" id="pp-done">Back to the game</button></div>`;
+      // The token sits in the URL fragment so it is never sent to servers or in Referer headers.
+      const link = new URL(`/r#${data.id}.${data.token}`, endpoint.startsWith('http') ? endpoint : location.href).href;
+      Object.assign(dialog.querySelector('#pp-link'), { href: link, textContent: 'Track my report ↗' });
       dialog.querySelector('#pp-done').addEventListener('click', () => dialog.close());
       dialog.querySelector('#pp-done').focus();
     } catch (e) {

@@ -48,6 +48,18 @@ ANTHROPIC_API_KEY=<key>
 
 Open `http://localhost:8787/play` (game), `/dev` (dashboard), `/fund` (pool).
 
+No keys yet? `npm run dev:mock` runs the same app on `http://127.0.0.1:8797` with PayPal and Claude mocked (the PayPal checkout button on `/fund` still needs real sandbox keys).
+
+Webhooks: in the PayPal Developer Dashboard, add a webhook for your sandbox app pointing to `https://<your-host>/api/paypal/webhook` with the `PAYMENT.PAYOUTS-ITEM.*` events, and put its id in `PAYPAL_WEBHOOK_ID`. Without it, payout status still updates by polling.
+
+## Tests
+
+```bash
+npm test        # policy, triage parsing, injection guard
+npm run e2e     # full money flow on a real local Worker + D1, PayPal and Claude mocked
+npm run smoke   # real PayPal sandbox: token, order, payout (needs .dev.vars)
+```
+
 ## Testing as a judge
 
 1. Open the live demo and click **Reset demo** on `/dev`.

@@ -1,9 +1,11 @@
+import { json } from './http.js';
 import { triageReport } from './triage.js';
-
-const json = (data, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+import { approvePayout, captureFundOrder, createFundOrder, handleWebhook, paypalReady, poolSummary, refreshPayout } from './payments.js';
 
 const LIMITS = { text: 500, screenshot: 300_000, console: 4_000, state: 4_000 };
+const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
+const validEmail = (e) => e.length <= 254 && EMAIL.test(e);
+const mask = (e) => (e ? e.replace(/^(.)[^@]*(@.*)$/, '$1***$2') : null);
 
 async function runTriage(env, id) {
   const report = await env.DB.prepare('SELECT * FROM reports WHERE id = ?').bind(id).first();
@@ -23,15 +25,18 @@ async function runTriage(env, id) {
   return t;
 }
 
-const SUMMARY = `SELECT r.id, r.created_at, r.game, r.text, t.title, t.category, t.severity, t.repro_steps, t.duplicate_of,
-  t.ai_amount, t.policy_amount, t.flags, t.model, t.raw_json FROM reports r LEFT JOIN triage t ON t.report_id = r.id`;
+const SUMMARY = `SELECT r.id, r.created_at, r.game, r.text, r.receiver_email, t.title, t.category, t.severity, t.repro_steps,
+  t.duplicate_of, t.ai_amount, t.policy_amount, t.flags, t.model, t.raw_json,
+  p.status AS payout_status, p.amount AS payout_amount, p.error AS payout_error
+  FROM reports r LEFT JOIN triage t ON t.report_id = r.id LEFT JOIN payouts p ON p.report_id = r.id`;
 
 function shape(row) {
   if (!row) return row;
-  const { raw_json, repro_steps, flags, ...rest } = row;
+  const { raw_json, repro_steps, flags, receiver_email, ...rest } = row;
   const parse = (s, fallback) => { try { return s ? JSON.parse(s) : fallback; } catch { return fallback; } };
-  return { ...rest, repro_steps: parse(repro_steps, []), flags: parse(flags, []), reasoning: parse(raw_json, {}).reasoning ?? null,
-    triaged: row.model !== undefined && (row.title !== null || parse(flags, []).length > 0) };
+  const f = parse(flags, []);
+  return { ...rest, repro_steps: parse(repro_steps, []), flags: f, reasoning: parse(raw_json, {}).reasoning ?? null,
+    triaged: row.title !== null || f.length > 0, receiver: mask(receiver_email) };
 }
 
 async function createReport(req, env, ctx) {
@@ -41,16 +46,18 @@ async function createReport(req, env, ctx) {
   const screenshot = body.screenshot ? String(body.screenshot) : null;
   const consoleLog = String(body.console || '').slice(0, LIMITS.console);
   const state = JSON.stringify(body.state ?? null);
+  const email = body.email ? String(body.email).trim() : null;
   if (!text || text.length > LIMITS.text) return json({ error: `Describe the bug in 1-${LIMITS.text} characters.` }, 400);
   if (screenshot && (!screenshot.startsWith('data:image/jpeg;base64,') || screenshot.length > LIMITS.screenshot))
     return json({ error: 'Screenshot must be a JPEG under 300 KB.' }, 400);
   if (state.length > LIMITS.state) return json({ error: 'Game state too large.' }, 400);
+  if (email && !validEmail(email)) return json({ error: 'Enter a valid PayPal email, or leave it empty.' }, 400);
 
   const id = crypto.randomUUID();
   const token = crypto.randomUUID();
   await env.DB.prepare(
-    'INSERT INTO reports (id, created_at, game, text, screenshot, console, state_json, reporter_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, Date.now(), String(body.game || 'demo').slice(0, 40), text, screenshot, consoleLog, state, token).run();
+    'INSERT INTO reports (id, created_at, game, text, screenshot, console, state_json, reporter_token, receiver_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, Date.now(), String(body.game || 'demo').slice(0, 40), text, screenshot, consoleLog, state, token, email).run();
   ctx.waitUntil(runTriage(env, id).catch((e) => console.error('triage failed', id, e.message)));
   return json({ id, token }, 201);
 }
@@ -67,18 +74,56 @@ async function getReport(env, id) {
   return json({ report: { ...shape(row), ...extra } });
 }
 
+// Reporter view: needs the private token given at submission time.
+async function reporterStatus(req, env, id) {
+  const url = new URL(req.url);
+  const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
+  const token = req.method === 'POST' ? body.t : url.searchParams.get('t');
+  const report = await env.DB.prepare('SELECT reporter_token, receiver_email FROM reports WHERE id = ?').bind(id).first();
+  if (!report || !token || token !== report.reporter_token) return json({ error: 'Report not found' }, 404);
+  if (req.method === 'POST') {
+    const email = String(body.email || '').trim();
+    if (!validEmail(email)) return json({ error: 'Enter a valid PayPal email.' }, 400);
+    const paid = await env.DB.prepare('SELECT 1 FROM payouts WHERE report_id = ?').bind(id).first();
+    if (paid) return json({ error: 'The bounty was already sent; the email can no longer change.' }, 409);
+    await env.DB.prepare('UPDATE reports SET receiver_email = ? WHERE id = ?').bind(email, id).run();
+  }
+  const r = shape(await env.DB.prepare(`${SUMMARY} WHERE r.id = ?`).bind(id).first());
+  return json({ report: { id: r.id, created_at: r.created_at, text: r.text, title: r.title, severity: r.severity, triaged: r.triaged,
+    flags: r.flags, duplicate_of: r.duplicate_of, policy_amount: r.policy_amount, payout_status: r.payout_status,
+    payout_amount: r.payout_amount, receiver: r.receiver } });
+}
+
 export default {
   async fetch(req, env, ctx) {
     const { pathname } = new URL(req.url);
-    if (pathname === '/api/health') return json({ ok: true, sandbox: true, ai: Boolean(env.ANTHROPIC_API_KEY) });
-    if (pathname === '/api/reports' && req.method === 'POST') return createReport(req, env, ctx);
-    if (pathname === '/api/reports' && req.method === 'GET') return listReports(env);
-    const m = pathname.match(/^\/api\/reports\/([0-9a-f-]{36})(\/triage)?$/);
-    if (m && !m[2] && req.method === 'GET') return getReport(env, m[1]);
-    if (m && m[2] && req.method === 'POST') {
-      // shortcut: unauthenticated re-triage, fine for the sandbox demo; gate behind dev auth before real use.
-      const t = await runTriage(env, m[1]);
-      return t ? getReport(env, m[1]) : json({ error: 'Report not found' }, 404);
+    const { method } = req;
+    if (pathname === '/api/health') return json({ ok: true, sandbox: true, ai: Boolean(env.ANTHROPIC_API_KEY), paypal: paypalReady(env) });
+    // The client id is public by design (the PayPal JS SDK needs it in the page).
+    if (pathname === '/api/config') return json({ paypalClientId: paypalReady(env) ? env.PAYPAL_CLIENT_ID : null });
+    if (pathname === '/api/reports' && method === 'POST') return createReport(req, env, ctx);
+    if (pathname === '/api/reports' && method === 'GET') return listReports(env);
+    if (pathname === '/api/pool' && method === 'GET') return json(await poolSummary(env));
+    if (pathname === '/api/pool/orders' && method === 'POST') return createFundOrder(req, env);
+    if (pathname === '/api/paypal/webhook' && method === 'POST') return handleWebhook(req, env);
+
+    const capture = pathname.match(/^\/api\/pool\/orders\/([A-Za-z0-9]+)\/capture$/);
+    if (capture && method === 'POST') return captureFundOrder(env, capture[1]);
+
+    const status = pathname.match(/^\/api\/status\/([0-9a-f-]{36})$/);
+    if (status && (method === 'GET' || method === 'POST')) return reporterStatus(req, env, status[1]);
+
+    // shortcut: dashboard actions are unauthenticated, fine for the sandbox demo; put them behind dev auth before real use.
+    const m = pathname.match(/^\/api\/reports\/([0-9a-f-]{36})(?:\/(triage|pay|payout))?$/);
+    if (m) {
+      const [, id, action] = m;
+      if (!action && method === 'GET') return getReport(env, id);
+      if (action === 'triage' && method === 'POST') {
+        const t = await runTriage(env, id);
+        return t ? getReport(env, id) : json({ error: 'Report not found' }, 404);
+      }
+      if (action === 'pay' && method === 'POST') return approvePayout(env, id);
+      if (action === 'payout' && method === 'GET') return refreshPayout(env, id);
     }
     if (pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
     return env.ASSETS.fetch(req);

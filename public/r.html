@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Your bug report · PatchPay</title>
+  <style>
+    :root { --accent: #2f6fed; --ink: #111; --muted: #5b6573; --line: #e3e8ef; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: #fff; color: var(--ink); }
+    .sandbox { background: #fff4d6; padding: 8px 16px; text-align: center; font-size: 14px; }
+    main { max-width: 560px; margin: 32px auto; padding: 0 16px; }
+    h1 { font-size: 24px; margin: 0 0 4px; }
+    .muted { color: var(--muted); }
+    .card { border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-top: 16px; }
+    .big { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+    ol.steps { list-style: none; padding: 0; margin: 16px 0 0; }
+    ol.steps li { padding: 6px 0 6px 32px; position: relative; color: var(--muted); }
+    ol.steps li::before { content: ''; position: absolute; left: 4px; top: 11px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #cfd6e0; }
+    ol.steps li.done { color: var(--ink); }
+    ol.steps li.done::before { background: #12b76a; border-color: #12b76a; }
+    blockquote { margin: 0; padding: 8px 12px; border-left: 3px solid var(--line); color: #344054; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
+    input { width: 100%; min-height: 44px; padding: 0 10px; border: 1px solid #cfd6e0; border-radius: 10px; font: 16px system-ui, sans-serif; }
+    button { margin-top: 10px; min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font: 600 15px system-ui, sans-serif; cursor: pointer; }
+    button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .error { color: #b42318; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="sandbox">SANDBOX · no real money moves</div>
+  <main>
+    <h1>Your bug report</h1>
+    <p class="muted">This page is private to you. Anyone with the link can see it, so don't share it.</p>
+    <div id="app" aria-live="polite"><p class="muted">Loading…</p></div>
+  </main>
+  <script>
+    const [id, token] = location.hash.slice(1).split('.');
+    const app = document.getElementById('app');
+    const money = (v) => `$${Number(v).toFixed(0)}`;
+    const SENDING = ['SENDING', 'PENDING', 'PROCESSING', 'ONHOLD'];
+    const RETURNED = ['FAILED', 'RETURNED', 'BLOCKED', 'REFUNDED', 'REVERSED', 'DENIED', 'CANCELED', 'SEND_FAILED'];
+    let timer = null;
+
+    function el(tag, props = {}, ...children) {
+      const node = Object.assign(document.createElement(tag), props);
+      for (const c of children) if (c != null) node.append(c);
+      return node;
+    }
+
+    function headline(r) {
+      const ps = r.payout_status;
+      if (ps === 'SUCCESS') return [`Paid ${money(r.payout_amount)} via PayPal`, 'Thanks for helping fix the game.'];
+      if (ps === 'UNCLAIMED') return [`${money(r.payout_amount)} sent`, `Sign in to PayPal as ${r.receiver} to claim it.`];
+      if (SENDING.includes(ps)) return ['Approved!', `${money(r.payout_amount)} is on its way through PayPal.`];
+      if (RETURNED.includes(ps)) return ['Payout did not go through', 'The developer can check the PayPal email and try again.'];
+      if (!r.triaged) return ['Received', 'The AI is sorting your report. This takes a few seconds.'];
+      if (r.flags.includes('prompt_injection') || r.flags.includes('spam')) return ['Not eligible', 'This report did not qualify for a bounty.'];
+      if (r.duplicate_of) return ['Already reported', 'Someone found this bug first. Thanks anyway!'];
+      if (r.flags.includes('not_a_bug')) return ['Not a bug', 'The game is working as intended here.'];
+      if (r.flags.includes('needs_manual_triage')) return ['Waiting for review', 'The developer will look at it by hand.'];
+      return [`Eligible for ${money(r.policy_amount)}`, 'Waiting for the developer to approve the bounty.'];
+    }
+
+    function render(r) {
+      const [big, sub] = headline(r);
+      const triaged = r.triaged;
+      const approved = Boolean(r.payout_status) && !RETURNED.includes(r.payout_status);
+      const paid = r.payout_status === 'SUCCESS';
+      const card = el('div', { className: 'card' },
+        el('p', { className: 'big', textContent: big }),
+        el('p', { className: 'muted', textContent: sub }),
+        el('ol', { className: 'steps' },
+          el('li', { className: 'done', textContent: 'Report received' }),
+          el('li', { className: triaged ? 'done' : '', textContent: 'Sorted by AI' }),
+          el('li', { className: approved ? 'done' : '', textContent: 'Approved by the developer' }),
+          el('li', { className: paid ? 'done' : '', textContent: 'Paid through PayPal' })),
+      );
+
+      let payTo = null;
+      if (r.receiver || !r.payout_status) {
+        payTo = el('div', { className: 'card' });
+        if (r.receiver) payTo.append(el('p', { textContent: `Bounty goes to ${r.receiver}`, style: 'margin:0' }));
+        if (!r.payout_status) {
+          const form = el('form', {},
+            el('label', { htmlFor: 'email', textContent: r.receiver ? 'Change PayPal email' : 'Add your PayPal email to receive the bounty' }),
+            el('input', { id: 'email', name: 'email', type: 'email', required: true, autocomplete: 'email', maxLength: 254, placeholder: 'you@example.com' }),
+            el('button', { type: 'submit', textContent: 'Save email' }),
+            el('p', { className: 'error', role: 'alert' }));
+          form.onsubmit = async (e) => {
+            e.preventDefault();
+            const res = await fetch(`/api/status/${id}`, { method: 'POST', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ t: token, email: form.email.value.trim() }) });
+            const data = await res.json();
+            if (!res.ok) { form.querySelector('.error').textContent = data.error; return; }
+            render(data.report);
+          };
+          payTo.append(form);
+        }
+      }
+
+      const details = el('div', { className: 'card' },
+        el('p', { className: 'muted', textContent: `Report #${r.id.slice(0, 8)} · ${new Date(r.created_at).toLocaleString('en-US')}` }),
+        r.title ? el('p', { textContent: r.title, style: 'font-weight:600;margin:0 0 8px' }) : null,
+        el('blockquote', { textContent: r.text }),
+      );
+      app.replaceChildren(...[card, payTo, details].filter(Boolean));
+
+      const finished = paid || RETURNED.includes(r.payout_status) || (triaged && r.policy_amount === 0);
+      clearTimeout(timer);
+      if (!finished) timer = setTimeout(load, 5000);
+    }
+
+    async function load() {
+      if (!id || !token) {
+        app.replaceChildren(el('p', { className: 'error', textContent: 'This link is incomplete. Use the link shown after you sent your report.' }));
+        return;
+      }
+      // Don't re-render under someone who is typing their email.
+      if (document.activeElement?.id === 'email') { timer = setTimeout(load, 5000); return; }
+      try {
+        const res = await fetch(`/api/status/${id}?t=${encodeURIComponent(token)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        render(data.report);
+      } catch (e) {
+        app.replaceChildren(el('p', { className: 'error', textContent: e.message === 'Report not found' ? 'We could not find this report.' : 'Could not load your report. Retrying…' }));
+        if (e.message !== 'Report not found') timer = setTimeout(load, 5000);
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

@@ -29,6 +29,11 @@
     .st-wait { background: #eef2f7; color: #344054; }
     .st-review { background: #fff4d6; color: #7a5300; }
     .st-blocked { background: #fde2e1; color: #b42318; }
+    .st-paid { background: #067647; color: #fff; }
+    .stat.pool { border-color: #b2ccff; background: #f5f8ff; }
+    .stat a { color: var(--accent); font-weight: 600; }
+    .note { font-size: 14px; margin: 8px 0 0; }
+    .note.err { color: #b42318; }
     aside { border: 1px solid var(--line); border-radius: 16px; padding: 16px; align-self: start; position: sticky; top: 12px; }
     aside[hidden] { display: none; }
     aside img { width: 100%; border-radius: 10px; background: var(--navy); display: block; }
@@ -61,6 +66,7 @@
     <div class="stat"><b id="s-ready">0</b><span>Ready to pay</span></div>
     <div class="stat"><b id="s-review">0</b><span>Needs review</span></div>
     <div class="stat"><b id="s-blocked">0</b><span>Blocked or duplicate</span></div>
+    <div class="stat pool"><b id="s-pool">$0</b><span>Bounty pool · <span id="s-today">$0</span> paid today (cap $<span id="s-cap">50</span>) · <a href="/fund">Fund pool</a></span></div>
   </section>
   <main id="main">
     <div id="grid" aria-label="Bug reports"></div>
@@ -73,7 +79,12 @@
     const money = (v) => (v == null ? '—' : `$${Number(v).toFixed(0)}`);
     const short = (id) => id.slice(0, 8);
 
+    const RETURNED = ['FAILED', 'RETURNED', 'BLOCKED', 'REFUNDED', 'REVERSED', 'DENIED', 'CANCELED', 'SEND_FAILED'];
     function status(r) {
+      if (r.payout_status === 'SUCCESS') return 'Paid';
+      if (r.payout_status === 'UNCLAIMED') return 'Unclaimed';
+      if (RETURNED.includes(r.payout_status)) return 'Payout failed';
+      if (r.payout_status) return 'Paying…';
       if (!r.triaged) return Date.now() - r.created_at > 60_000 ? 'Needs review' : 'Triaging…';
       if (r.flags.includes('needs_manual_triage')) return 'Needs review';
       if (r.flags.includes('prompt_injection') || r.flags.includes('spam')) return 'Blocked';
@@ -81,7 +92,7 @@
       if (r.flags.includes('not_a_bug')) return 'Not a bug';
       return 'Ready to pay';
     }
-    const TONE = { 'Ready to pay': 'st-ready', 'Triaging…': 'st-wait', 'Needs review': 'st-review', Blocked: 'st-blocked', Duplicate: 'st-wait', 'Not a bug': 'st-wait' };
+    const TONE = { Paid: 'st-paid', Unclaimed: 'st-review', 'Payout failed': 'st-blocked', 'Paying…': 'st-wait', 'Ready to pay': 'st-ready', 'Triaging…': 'st-wait', 'Needs review': 'st-review', Blocked: 'st-blocked', Duplicate: 'st-wait', 'Not a bug': 'st-wait' };
 
     function el(tag, props = {}, ...children) {
       const node = Object.assign(document.createElement(tag), props);
@@ -109,10 +120,21 @@
       ],
     });
 
-    let current = null; // { id, triaged }
+    let current = null; // { id, triaged, payout }
+    let paypalOn = false;
+    fetch('/api/health').then((r) => r.json()).then((h) => { paypalOn = h.paypal; if (current) openDetail(current.id); }).catch(() => {});
 
     async function refresh() {
       try {
+        fetch('/api/pool').then((r) => r.json()).then((p) => {
+          $('#s-pool').textContent = `$${p.balance.toFixed(2)}`;
+          $('#s-today').textContent = `$${p.paidToday.toFixed(0)}`;
+          $('#s-cap').textContent = p.dailyCap;
+        }).catch(() => {});
+        // Polling fallback while a payout is in flight (webhooks may be late).
+        if (current && current.payout && !['SUCCESS', ...RETURNED].includes(current.payout)) {
+          await fetch(`/api/reports/${current.id}/payout`).catch(() => {});
+        }
         const { reports } = await (await fetch('/api/reports')).json();
         grid.setGridOption('rowData', reports);
         const s = reports.map(status);
@@ -121,7 +143,7 @@
         $('#s-review').textContent = s.filter((x) => x === 'Needs review' || x === 'Triaging…').length;
         $('#s-blocked').textContent = s.filter((x) => x === 'Blocked' || x === 'Duplicate').length;
         const row = current && reports.find((r) => r.id === current.id);
-        if (row && row.triaged !== current.triaged) openDetail(row.id);
+        if (row && (row.triaged !== current.triaged || row.payout_status !== current.payout)) openDetail(row.id);
       } catch { /* keep the last data on a failed poll */ }
     }
 
@@ -130,7 +152,7 @@
       const res = await fetch(`/api/reports/${id}`);
       if (!res.ok) return;
       const { report: r } = await res.json();
-      current = { id, triaged: r.triaged };
+      current = { id, triaged: r.triaged, payout: r.payout_status };
       grid.getRowNode(id)?.setSelected(true);
 
       const st = status(r);
@@ -148,8 +170,31 @@
         await refresh();
         openDetail(id);
       };
-      const pay = el('button', { className: 'primary', textContent: `Approve & pay ${money(r.policy_amount)}`, disabled: true,
-        title: 'PayPal payout is connected in the next step' });
+      // Only a payout PayPal rejected outright (no batch created) can be retried safely.
+      const payable = st === 'Ready to pay' || r.payout_status === 'SEND_FAILED';
+      const canPay = payable && r.receiver && paypalOn;
+      const payNote = el('p', { className: 'note muted' });
+      if (st === 'Payout failed' && !payable) {
+        payNote.textContent = `PayPal returned the payout (${r.payout_status}). The amount went back to the pool.`;
+      } else if (payable) {
+        if (!paypalOn) payNote.textContent = 'PayPal sandbox keys are not configured on the server.';
+        else if (!r.receiver) payNote.textContent = 'Waiting for the reporter to add a PayPal email.';
+        else payNote.textContent = `Pays ${r.receiver} through PayPal Payouts.`;
+      } else if (r.payout_status) {
+        payNote.textContent = `PayPal payout status: ${r.payout_status}${r.receiver ? ` · to ${r.receiver}` : ''}`;
+      }
+      if (r.payout_error) payNote.append(el('span', { className: 'err', textContent: ` · ${r.payout_error}` }));
+      const pay = el('button', { className: 'primary', disabled: !canPay,
+        textContent: r.payout_status === 'SEND_FAILED' ? `Retry payout ${money(r.policy_amount)}` : `Approve & pay ${money(r.policy_amount)}` });
+      pay.onclick = async () => {
+        pay.disabled = true;
+        pay.textContent = 'Sending via PayPal…';
+        const res = await fetch(`/api/reports/${id}/pay`, { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        await refresh();
+        await openDetail(id);
+        if (!res.ok) $('#detail').append(el('p', { className: 'note err', role: 'alert', textContent: data.error || 'Payout failed.' }));
+      };
 
       const children = [
         el('button', { className: 'ghost close', textContent: 'Close', onclick: closeDetail }),
@@ -166,7 +211,8 @@
         el('p', { className: 'muted', textContent: `Set by policy. AI suggested ${money(r.ai_amount)}${r.model ? ` (${r.model})` : ''}.` }),
         el('details', {}, el('summary', { textContent: 'Console' }), el('pre', { textContent: r.console || '(empty)' })),
         el('details', {}, el('summary', { textContent: 'Game state' }), el('pre', { textContent: r.state_json || 'null' })),
-        el('div', { className: 'row' }, pay, retriage),
+        el('div', { className: 'row' }, payable ? pay : null, retriage),
+        payNote.textContent ? payNote : null,
       ];
       const wasHidden = panel.hidden;
       panel.replaceChildren(...children.filter(Boolean));

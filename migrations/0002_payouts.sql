@@ -1,0 +1,2 @@
+ALTER TABLE payouts ADD COLUMN created_at INTEGER;
+ALTER TABLE payouts ADD COLUMN error TEXT;
