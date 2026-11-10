@@ -114,13 +114,13 @@
       onRowClicked: (e) => openDetail(e.data.id),
       onCellKeyDown: (e) => { if (e.event.key === 'Enter') openDetail(e.data.id); },
       columnDefs: [
-        { headerName: 'Received', field: 'created_at', width: 110, sort: 'desc',
+        { headerName: 'Received', field: 'created_at', width: 100, sort: 'desc',
           valueFormatter: (p) => new Date(p.value).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) },
-        { headerName: 'Report', flex: 2, minWidth: 220, valueGetter: (p) => p.data.title || p.data.text },
-        { headerName: 'Severity', field: 'severity', width: 115, cellRenderer: (p) => (p.value ? badge(p.value, `sev-${p.value}`) : '') },
-        { headerName: 'Category', field: 'category', width: 115 },
-        { headerName: 'Bounty', field: 'policy_amount', width: 95, valueFormatter: (p) => (p.data.triaged ? money(p.value) : '—') },
-        { headerName: 'Status', width: 145, valueGetter: (p) => status(p.data), cellRenderer: (p) => badge(p.value, TONE[p.value]) },
+        { headerName: 'Report', flex: 2, minWidth: 200, tooltipValueGetter: (p) => p.value, valueGetter: (p) => p.data.title || p.data.text },
+        { headerName: 'Severity', field: 'severity', width: 105, cellRenderer: (p) => (p.value ? badge(p.value, `sev-${p.value}`) : '') },
+        { headerName: 'Category', field: 'category', width: 105 },
+        { headerName: 'Bounty', field: 'policy_amount', width: 85, valueFormatter: (p) => (p.data.triaged ? money(p.value) : '—') },
+        { headerName: 'Status', flex: 1, minWidth: 140, valueGetter: (p) => status(p.data), cellRenderer: (p) => badge(p.value, TONE[p.value]) },
       ],
     });
 
