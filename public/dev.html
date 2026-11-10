@@ -59,8 +59,12 @@
   <div class="sandbox">SANDBOX · no real money moves</div>
   <header>
     <h1>Bug bounty queue</h1>
-    <a href="/play" target="_blank" rel="noopener">Open the demo game ↗</a>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <a href="/play" target="_blank" rel="noopener">Open the demo game ↗</a>
+      <button type="button" class="ghost" id="reset">Reset demo</button>
+    </div>
   </header>
+  <p id="reset-msg" class="note" role="status" style="max-width:1280px;margin:0 auto 8px;padding:0 16px"></p>
   <section class="stats" aria-label="Queue summary">
     <div class="stat"><b id="s-total">0</b><span>Reports</span></div>
     <div class="stat"><b id="s-ready">0</b><span>Ready to pay</span></div>
@@ -200,7 +204,7 @@
         el('button', { className: 'ghost close', textContent: 'Close', onclick: closeDetail }),
         r.screenshot ? el('img', { src: r.screenshot, alt: 'Game screenshot captured when the player opened the report' }) : null,
         el('h2', { textContent: r.title || (st === 'Triaging…' ? 'Waiting for AI triage…' : 'Not triaged yet') }),
-        el('div', { className: 'chips' }, badge(st, TONE[st]), r.severity ? badge(r.severity, `sev-${r.severity}`) : null,
+        el('div', { className: 'chips' }, badge(st, TONE[st]), r.game === 'sample' ? badge('sample report', 'st-wait') : null, r.severity ? badge(r.severity, `sev-${r.severity}`) : null,
           r.category ? badge(r.category, 'st-wait') : null, ...flags.map((f) => badge(f.replaceAll('_', ' '), 'st-blocked'))),
         el('h3', { textContent: 'Player said' }), el('blockquote', { textContent: r.text }),
         el('h3', { textContent: 'Steps to reproduce' }), steps,
@@ -229,6 +233,19 @@
       grid.deselectAll();
     }
     addEventListener('keydown', (e) => { if (e.key === 'Escape' && current) closeDetail(); });
+
+    $('#reset').onclick = async () => {
+      if (!confirm('Delete all reports and load 6 sample reports? The bounty pool balance is kept.')) return;
+      const btn = $('#reset');
+      btn.disabled = true;
+      const res = await fetch('/api/demo/reset', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      $('#reset-msg').textContent = res.ok ? 'Sample reports loaded. AI triage runs on each one in a few seconds.' : data.error || 'Reset failed.';
+      $('#reset-msg').className = res.ok ? 'note muted' : 'note err';
+      closeDetail();
+      await refresh();
+      btn.disabled = false;
+    };
 
     refresh();
     setInterval(refresh, 4000);

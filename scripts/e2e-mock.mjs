@@ -145,6 +145,21 @@ try {
     assert.equal(r.payout_amount, 10);
   });
 
+  await step('demo reset loads 6 triaged samples, keeps the pool, and is rate-limited', async () => {
+    const before = (await pool()).balance;
+    // noEmail's payout is still PENDING until polled, and an in-flight payout must block the reset.
+    assert.equal((await api('POST', '/api/demo/reset')).status, 409);
+    await api('GET', `/api/reports/${noEmail.id}/payout`);
+    const r = await api('POST', '/api/demo/reset');
+    assert.equal(r.status, 200);
+    assert.equal((await api('POST', '/api/demo/reset')).status, 429);
+    const { reports } = (await api('GET', '/api/reports')).body;
+    assert.equal(reports.length, 6);
+    assert.ok(reports.every((x) => x.game === 'sample'));
+    await Promise.all(reports.map((x) => triaged(x.id)));
+    assert.equal((await pool()).balance, before);
+  });
+
   console.log(`\n${passed} e2e checks passed`);
 } catch (e) {
   console.error(`\nFAILED after ${passed} checks:`, e);
