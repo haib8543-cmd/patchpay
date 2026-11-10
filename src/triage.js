@@ -9,14 +9,17 @@ const FLAGS = ['prompt_injection', 'spam', 'not_a_bug', 'needs_more_info'];
 const TOOL = {
   name: 'record_triage',
   description: 'Record the triage result for one bug report.',
+  // strict: the API guarantees the input matches the schema (the model once returned only a title without it).
+  strict: true,
   input_schema: {
     type: 'object',
+    additionalProperties: false,
     properties: {
       title: { type: 'string', description: 'Short developer-facing title, max 80 characters.' },
       category: { type: 'string', enum: CATEGORIES },
       severity: { type: 'string', enum: SEVERITIES },
-      repro_steps: { type: 'array', items: { type: 'string' }, maxItems: 6 },
-      duplicate_of: { type: ['string', 'null'], description: 'Id of an open report describing the same bug, else null.' },
+      repro_steps: { type: 'array', items: { type: 'string' }, description: 'Up to 6 concrete steps.' },
+      duplicate_of: { anyOf: [{ type: 'string' }, { type: 'null' }], description: 'Id of an open report describing the same bug, else null.' },
       suggested_bounty_usd: { type: 'number' },
       flags: { type: 'array', items: { type: 'string', enum: FLAGS } },
       reasoning: { type: 'string', description: 'One or two sentences for the developer.' },
@@ -76,8 +79,9 @@ export function parseTriage(response, openIds) {
   const t = response?.content?.find((b) => b.type === 'tool_use' && b.name === TOOL.name)?.input;
   if (!t || typeof t.title !== 'string' || !t.title.trim()) throw new Error('No triage in model response');
   if (!CATEGORIES.includes(t.category) || !SEVERITIES.includes(t.severity)) throw new Error('Invalid category or severity');
+  const title = t.title.trim();
   return {
-    title: t.title.trim().slice(0, 80),
+    title: title.length > 80 ? `${title.slice(0, 79).replace(/\s+\S*$/, '')}…` : title,
     category: t.category,
     severity: t.severity,
     repro_steps: (Array.isArray(t.repro_steps) ? t.repro_steps : []).map(String).slice(0, 6),

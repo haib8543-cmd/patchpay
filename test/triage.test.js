@@ -31,6 +31,14 @@ test('policy, not the model, sets the amount', async () => {
   assert.equal(t.policy_amount, 10);
 });
 
+test('long titles are cut at a word boundary', async () => {
+  const long = 'Paddle freezes when it hits the right wall because reading limit of undefined throws at play:70';
+  const t = await triageReport({}, report, open, reply({ ...good, title: long }));
+  assert.ok(t.title.length <= 80);
+  assert.ok(t.title.endsWith('…'));
+  assert.ok(!t.title.includes('play:7'));
+});
+
 test('unknown duplicate ids are dropped; known ones zero the bounty', async () => {
   assert.equal((await triageReport({}, report, open, reply({ ...good, duplicate_of: 'made-up' }))).duplicate_of, null);
   const dup = await triageReport({}, report, open, reply({ ...good, duplicate_of: 'r1' }));

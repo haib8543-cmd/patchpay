@@ -1,5 +1,5 @@
 // Money flows: fund the pool (Orders v2), pay bounties (Payouts v1), confirm via webhooks.
-import { json } from './http.js';
+import { isSet, json } from './http.js';
 import { paypal } from './paypal.js';
 import { capAmount, DAILY_CAP_USD } from './policy.js';
 
@@ -9,7 +9,7 @@ const NOT_PAID = [...RETURNED, 'SEND_FAILED'];
 const INELIGIBLE = ['prompt_injection', 'spam', 'not_a_bug', 'needs_manual_triage'];
 const round = (n) => Math.round(n * 100) / 100;
 
-export const paypalReady = (env) => Boolean(env.PAYPAL_CLIENT_ID && env.PAYPAL_CLIENT_SECRET);
+export const paypalReady = (env) => isSet(env.PAYPAL_CLIENT_ID) && isSet(env.PAYPAL_CLIENT_SECRET);
 const notConfigured = () => json({ error: 'PayPal sandbox keys are not configured on the server.' }, 503);
 
 export async function poolSummary(env) {
@@ -146,7 +146,7 @@ export async function captureFundOrder(env, orderId) {
 }
 
 export async function handleWebhook(req, env) {
-  if (!paypalReady(env) || !env.PAYPAL_WEBHOOK_ID) return notConfigured();
+  if (!paypalReady(env) || !isSet(env.PAYPAL_WEBHOOK_ID)) return notConfigured();
   let event;
   try { event = JSON.parse(await req.text()); } catch { return json({ error: 'Invalid JSON' }, 400); }
   const h = (k) => req.headers.get(k);

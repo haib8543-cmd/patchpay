@@ -1,4 +1,4 @@
-import { json } from './http.js';
+import { isSet, json } from './http.js';
 import { triageReport } from './triage.js';
 import { approvePayout, captureFundOrder, createFundOrder, handleWebhook, paypalReady, poolSummary, refreshPayout } from './payments.js';
 
@@ -10,11 +10,12 @@ const mask = (e) => (e ? e.replace(/^(.)[^@]*(@.*)$/, '$1***$2') : null);
 async function runTriage(env, id) {
   const report = await env.DB.prepare('SELECT * FROM reports WHERE id = ?').bind(id).first();
   if (!report) return null;
+  // Only earlier reports can be the original, so the first reporter keeps the bounty.
   const { results: open } = await env.DB.prepare(
     `SELECT r.id, r.text, t.title FROM reports r LEFT JOIN triage t ON t.report_id = r.id
-     WHERE r.id != ? AND t.duplicate_of IS NULL ORDER BY r.created_at DESC LIMIT 20`
-  ).bind(id).all();
-  const t = env.ANTHROPIC_API_KEY
+     WHERE r.id != ? AND r.created_at < ? AND t.duplicate_of IS NULL ORDER BY r.created_at DESC LIMIT 20`
+  ).bind(id, report.created_at).all();
+  const t = isSet(env.ANTHROPIC_API_KEY)
     ? await triageReport(env, report, open)
     : { flags: ['needs_manual_triage'], reasoning: 'ANTHROPIC_API_KEY is not set.', repro_steps: [], policy_amount: 0, model: null };
   await env.DB.prepare(
@@ -98,7 +99,7 @@ export default {
   async fetch(req, env, ctx) {
     const { pathname } = new URL(req.url);
     const { method } = req;
-    if (pathname === '/api/health') return json({ ok: true, sandbox: true, ai: Boolean(env.ANTHROPIC_API_KEY), paypal: paypalReady(env) });
+    if (pathname === '/api/health') return json({ ok: true, sandbox: true, ai: isSet(env.ANTHROPIC_API_KEY), paypal: paypalReady(env) });
     // The client id is public by design (the PayPal JS SDK needs it in the page).
     if (pathname === '/api/config') return json({ paypalClientId: paypalReady(env) ? env.PAYPAL_CLIENT_ID : null });
     if (pathname === '/api/reports' && method === 'POST') return createReport(req, env, ctx);
