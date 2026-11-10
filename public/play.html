@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Star Catcher · PatchPay demo</title>
+  <style>
+    :root { --navy: #0b1f3a; --accent: #2f6fed; --ink: #111; --muted: #5b6573; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: #fff; color: var(--ink); }
+    .sandbox { background: #fff4d6; padding: 8px 16px; text-align: center; font-size: 14px; }
+    main { max-width: 680px; margin: 24px auto; padding: 0 16px; }
+    h1 { font-size: 24px; margin: 0 0 4px; }
+    p { margin: 0 0 16px; color: var(--muted); }
+    canvas { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; background: var(--navy); touch-action: none; }
+    .bar { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 12px; }
+    .pads { display: flex; gap: 8px; }
+    .pads button { width: 64px; height: 48px; font-size: 20px; border: 1px solid #cfd6e0; border-radius: 10px; background: #fff; cursor: pointer; }
+    label { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); }
+    label input { width: 20px; height: 20px; }
+  </style>
+</head>
+<body>
+  <div class="sandbox">SANDBOX · no real money moves</div>
+  <main>
+    <h1>Star Catcher</h1>
+    <p>Catch the falling stars. Move with ← → (or A/D, or the buttons). Something broken? Report it and earn a bounty.</p>
+    <canvas id="game" width="640" height="360" aria-label="Star Catcher game"></canvas>
+    <div class="bar">
+      <div class="pads">
+        <button type="button" data-key="ArrowLeft" aria-label="Move left">←</button>
+        <button type="button" data-key="ArrowRight" aria-label="Move right">→</button>
+      </div>
+      <label><input type="checkbox" id="demo-bug" checked> Demo bug (freezes at the right wall)</label>
+    </div>
+  </main>
+
+  <script>
+    const cv = document.getElementById('game');
+    const ctx = cv.getContext('2d');
+    const W = cv.width, H = cv.height;
+    const bugToggle = document.getElementById('demo-bug');
+    // Demo bug: the level only defines a left edge, so reading edges.right throws.
+    const level = { name: 'Meadow 1', edges: { left: { limit: 0 } } };
+    const player = { x: 300, y: H - 36, w: 48, h: 14, speed: 5 };
+    let stars = [], score = 0, frame = 0, paused = false;
+    const keys = {};
+
+    addEventListener('keydown', (e) => { keys[e.key] = true; if (e.key.startsWith('Arrow')) e.preventDefault(); });
+    addEventListener('keyup', (e) => { keys[e.key] = false; });
+    for (const b of document.querySelectorAll('[data-key]')) {
+      const k = b.dataset.key;
+      b.addEventListener('pointerdown', () => { keys[k] = true; });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { keys[k] = false; });
+    }
+    addEventListener('patchpay:open', () => { paused = true; });
+    addEventListener('patchpay:close', () => { paused = false; });
+
+    // Read by the PatchPay widget when a report is filed.
+    window.patchpayState = () => ({
+      level: level.name, score, frame, demoBug: bugToggle.checked,
+      player: { x: player.x, y: player.y }, stars: stars.length,
+    });
+
+    function update() {
+      const dir = (keys.ArrowRight || keys.d ? 1 : 0) - (keys.ArrowLeft || keys.a ? 1 : 0);
+      player.x += dir * player.speed;
+      if (player.x < level.edges.left.limit) player.x = level.edges.left.limit;
+      if (player.x + player.w > W) {
+        player.x = bugToggle.checked ? level.edges.right.limit - player.w : W - player.w;
+      }
+      if (frame % 45 === 0) stars.push({ x: 12 + Math.random() * (W - 24), y: -8, vy: 1.4 + Math.random() * 1.6 });
+      for (const s of stars) s.y += s.vy;
+      stars = stars.filter((s) => {
+        const hit = s.y > player.y - 6 && s.y < player.y + player.h && s.x > player.x && s.x < player.x + player.w;
+        if (hit) score++;
+        return !hit && s.y < H + 10;
+      });
+      frame++;
+    }
+
+    function draw() {
+      ctx.fillStyle = '#0b1f3a';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#fff';
+      for (const s of stars) { ctx.beginPath(); ctx.arc(s.x, s.y, 5, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = '#2f6fed';
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+      ctx.fillStyle = '#fff';
+      ctx.font = '600 16px system-ui, sans-serif';
+      ctx.fillText(`Score ${score}`, 16, 28);
+      ctx.fillText(level.name, W - 100, 28);
+    }
+
+    // An exception in update() stops scheduling the next frame, so the game freezes like a real bug.
+    function loop() {
+      if (!paused) { update(); draw(); }
+      requestAnimationFrame(loop);
+    }
+    draw();
+    requestAnimationFrame(loop);
+  </script>
+  <script src="/patchpay-widget.js" data-game="star-catcher" data-canvas="#game"></script>
+</body>
+</html>
