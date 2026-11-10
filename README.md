@@ -4,7 +4,7 @@
 
 > Runs entirely in the **PayPal Sandbox**. No real money moves.
 
-- Live demo: `https://<your-worker>.workers.dev` (TODO)
+- Live demo: https://patchpay.cosmoscan-preview.workers.dev (game: `/play`, developer dashboard: `/dev`, fund the pool: `/fund`)
 - Demo video: `https://youtu.be/<id>` (TODO)
 
 ## What it does
@@ -30,7 +30,7 @@
 Requirements: Node 18+, a free [PayPal Developer](https://developer.paypal.com/) account, an Anthropic API key.
 
 ```bash
-git clone https://github.com/<you>/patchpay
+git clone https://github.com/haib8543-cmd/patchpay
 cd patchpay
 npm install
 cp .dev.vars.example .dev.vars   # fill in the sandbox keys below
@@ -62,12 +62,14 @@ npm run smoke   # real PayPal sandbox: token, order, payout (needs .dev.vars)
 
 ## Testing as a judge
 
-1. Open the live demo and click **Reset demo** on `/dev`.
-2. On `/play`, toggle **Demo bug**, trigger it, and submit a report. Use the sandbox receiver email below.
-3. On `/dev`, open the new row, read the AI triage, click **Approve**.
-4. Sign in to [sandbox.paypal.com](https://www.sandbox.paypal.com) with the sandbox receiver account to see the payout.
+No login is needed on the demo site; everything runs in the PayPal sandbox.
 
-Sandbox receiver (test account, not a real person): `TODO`
+1. Open https://patchpay.cosmoscan-preview.workers.dev/dev and click **Reset demo**. Six sample reports load and go through live AI triage (a few seconds).
+2. If the bounty pool is below $10, open `/fund` and pay with any **PayPal sandbox** buyer account, or the "Debit or Credit Card" button with a [PayPal sandbox test card](https://developer.paypal.com/tools/sandbox/card-testing/).
+3. Back on `/dev`, open a **Ready to pay** row and click **Approve & pay**. Status moves to **Paid** once PayPal confirms the payout.
+4. Try your own report: open `/play`, keep **Demo bug** on, move right until the game freezes, click **Report a bug**. Add your sandbox personal account email if you want to receive the bounty.
+
+Sample reports pay a sandbox test account owned by the project, not a real person. Anyone can reset the hosted demo (rate-limited to once per 2 minutes) and the daily bounty cap is $50.
 
 ## Privacy
 

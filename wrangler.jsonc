@@ -7,8 +7,8 @@
     {
       "binding": "DB",
       "database_name": "patchpay",
-      // Replace with the id from `wrangler d1 create patchpay` before the first deploy.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // To self-host: run `wrangler d1 create patchpay` and put your own id here.
+      "database_id": "2920d2cf-558e-47d0-ad05-872bf5eb2acc",
       "migrations_dir": "migrations"
     }
   ]
