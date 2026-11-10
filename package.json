@@ -1,0 +1,17 @@
+{
+  "name": "patchpay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 migrations apply patchpay --local",
+    "smoke": "node scripts/smoke-paypal.mjs",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "wrangler": "4.158.0"
+  }
+}

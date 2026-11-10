@@ -1,0 +1,7 @@
+# Copy to .dev.vars (git-ignored) and fill in SANDBOX values only.
+PAYPAL_CLIENT_ID=<sandbox app client id>
+PAYPAL_CLIENT_SECRET=<sandbox app secret>
+PAYPAL_WEBHOOK_ID=<sandbox webhook id>
+# A sandbox Personal test account email (Developer Dashboard > Testing Tools > Sandbox Accounts)
+SANDBOX_RECEIVER_EMAIL=<sandbox personal account email>
+ANTHROPIC_API_KEY=<api key>
