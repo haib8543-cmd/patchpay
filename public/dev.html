@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PatchPay · Developer dashboard</title>
+  <style>
+    :root { --navy: #0b1f3a; --accent: #2f6fed; --ink: #111; --muted: #5b6573; --line: #e3e8ef; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #fff; color: var(--ink); }
+    .sandbox { background: #fff4d6; padding: 8px 16px; text-align: center; font-size: 14px; }
+    header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 16px; max-width: 1280px; margin: 0 auto; }
+    h1 { font-size: 22px; margin: 0; }
+    header a { color: var(--accent); font-weight: 600; }
+    .stats { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 16px; max-width: 1280px; margin: 0 auto 12px; }
+    .stat { border: 1px solid var(--line); border-radius: 12px; padding: 8px 14px; min-width: 120px; }
+    .stat b { display: block; font-size: 22px; }
+    .stat span { color: var(--muted); font-size: 13px; }
+    main { display: grid; grid-template-columns: 1fr; gap: 16px; padding: 0 16px 32px; max-width: 1280px; margin: 0 auto; }
+    main.open { grid-template-columns: minmax(0, 1fr) 420px; }
+    @media (max-width: 960px) { main.open { grid-template-columns: 1fr; } }
+    #grid { width: 100%; }
+    .badge { display: inline-block; padding: 1px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; line-height: 22px; }
+    .sev-low { background: #eef2f7; color: #344054; }
+    .sev-medium { background: #fff4d6; color: #7a5300; }
+    .sev-high { background: #ffe4d6; color: #9a3412; }
+    .sev-critical { background: #fde2e1; color: #b42318; }
+    .st-ready { background: #dcfae6; color: #067647; }
+    .st-wait { background: #eef2f7; color: #344054; }
+    .st-review { background: #fff4d6; color: #7a5300; }
+    .st-blocked { background: #fde2e1; color: #b42318; }
+    aside { border: 1px solid var(--line); border-radius: 16px; padding: 16px; align-self: start; position: sticky; top: 12px; }
+    aside[hidden] { display: none; }
+    aside img { width: 100%; border-radius: 10px; background: var(--navy); display: block; }
+    aside h2 { font-size: 18px; margin: 12px 0 4px; }
+    aside h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 4px; }
+    aside blockquote { margin: 0; padding: 8px 12px; border-left: 3px solid var(--line); color: #344054; }
+    aside ol { margin: 0; padding-left: 20px; }
+    aside pre { white-space: pre-wrap; word-break: break-word; background: #f6f8fb; border-radius: 8px; padding: 8px; font-size: 12px; margin: 4px 0 0; }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .amount { font-size: 28px; font-weight: 700; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+    button { min-height: 44px; padding: 0 16px; border-radius: 10px; font: 600 15px system-ui, sans-serif; cursor: pointer; }
+    .primary { border: 0; background: var(--accent); color: #fff; }
+    .primary:disabled { opacity: .5; cursor: not-allowed; }
+    .ghost { border: 1px solid #cfd6e0; background: #fff; color: var(--ink); }
+    .linklike { border: 0; background: none; color: var(--accent); padding: 0; min-height: 0; font-weight: 600; }
+    .close { float: right; min-height: 36px; padding: 0 10px; }
+    button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <div class="sandbox">SANDBOX · no real money moves</div>
+  <header>
+    <h1>Bug bounty queue</h1>
+    <a href="/play" target="_blank" rel="noopener">Open the demo game ↗</a>
+  </header>
+  <section class="stats" aria-label="Queue summary">
+    <div class="stat"><b id="s-total">0</b><span>Reports</span></div>
+    <div class="stat"><b id="s-ready">0</b><span>Ready to pay</span></div>
+    <div class="stat"><b id="s-review">0</b><span>Needs review</span></div>
+    <div class="stat"><b id="s-blocked">0</b><span>Blocked or duplicate</span></div>
+  </section>
+  <main id="main">
+    <div id="grid" aria-label="Bug reports"></div>
+    <aside id="detail" hidden aria-live="polite"></aside>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@36.2.0/dist/ag-grid-community.min.js"></script>
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const money = (v) => (v == null ? '—' : `$${Number(v).toFixed(0)}`);
+    const short = (id) => id.slice(0, 8);
+
+    function status(r) {
+      if (!r.triaged) return Date.now() - r.created_at > 60_000 ? 'Needs review' : 'Triaging…';
+      if (r.flags.includes('needs_manual_triage')) return 'Needs review';
+      if (r.flags.includes('prompt_injection') || r.flags.includes('spam')) return 'Blocked';
+      if (r.duplicate_of) return 'Duplicate';
+      if (r.flags.includes('not_a_bug')) return 'Not a bug';
+      return 'Ready to pay';
+    }
+    const TONE = { 'Ready to pay': 'st-ready', 'Triaging…': 'st-wait', 'Needs review': 'st-review', Blocked: 'st-blocked', Duplicate: 'st-wait', 'Not a bug': 'st-wait' };
+
+    function el(tag, props = {}, ...children) {
+      const node = Object.assign(document.createElement(tag), props);
+      for (const c of children) if (c != null) node.append(c);
+      return node;
+    }
+    const badge = (text, cls) => el('span', { className: `badge ${cls}`, textContent: text });
+
+    const grid = agGrid.createGrid($('#grid'), {
+      domLayout: 'autoHeight',
+      getRowId: (p) => p.data.id,
+      rowSelection: { mode: 'singleRow', checkboxes: false, enableClickSelection: true },
+      defaultColDef: { resizable: true, sortable: true },
+      overlayNoRowsTemplate: 'No reports yet. Open the demo game and report a bug.',
+      onRowClicked: (e) => openDetail(e.data.id),
+      onCellKeyDown: (e) => { if (e.event.key === 'Enter') openDetail(e.data.id); },
+      columnDefs: [
+        { headerName: 'Received', field: 'created_at', width: 110, sort: 'desc',
+          valueFormatter: (p) => new Date(p.value).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) },
+        { headerName: 'Report', flex: 2, minWidth: 220, valueGetter: (p) => p.data.title || p.data.text },
+        { headerName: 'Severity', field: 'severity', width: 115, cellRenderer: (p) => (p.value ? badge(p.value, `sev-${p.value}`) : '') },
+        { headerName: 'Category', field: 'category', width: 115 },
+        { headerName: 'Bounty', field: 'policy_amount', width: 95, valueFormatter: (p) => (p.data.triaged ? money(p.value) : '—') },
+        { headerName: 'Status', width: 145, valueGetter: (p) => status(p.data), cellRenderer: (p) => badge(p.value, TONE[p.value]) },
+      ],
+    });
+
+    let current = null; // { id, triaged }
+
+    async function refresh() {
+      try {
+        const { reports } = await (await fetch('/api/reports')).json();
+        grid.setGridOption('rowData', reports);
+        const s = reports.map(status);
+        $('#s-total').textContent = reports.length;
+        $('#s-ready').textContent = s.filter((x) => x === 'Ready to pay').length;
+        $('#s-review').textContent = s.filter((x) => x === 'Needs review' || x === 'Triaging…').length;
+        $('#s-blocked').textContent = s.filter((x) => x === 'Blocked' || x === 'Duplicate').length;
+        const row = current && reports.find((r) => r.id === current.id);
+        if (row && row.triaged !== current.triaged) openDetail(row.id);
+      } catch { /* keep the last data on a failed poll */ }
+    }
+
+    async function openDetail(id) {
+      const panel = $('#detail');
+      const res = await fetch(`/api/reports/${id}`);
+      if (!res.ok) return;
+      const { report: r } = await res.json();
+      current = { id, triaged: r.triaged };
+      grid.getRowNode(id)?.setSelected(true);
+
+      const st = status(r);
+      const flags = r.flags.filter((f) => f !== 'needs_manual_triage');
+      const steps = r.repro_steps.length ? el('ol', {}, ...r.repro_steps.map((s) => el('li', { textContent: s }))) : el('p', { className: 'muted', textContent: 'No steps yet.' });
+      const dup = r.duplicate_of
+        ? el('p', {}, 'Duplicate of ', el('button', { className: 'linklike', textContent: `#${short(r.duplicate_of)}`, onclick: () => openDetail(r.duplicate_of) }), '. The original report gets the bounty.')
+        : null;
+
+      const retriage = el('button', { className: 'ghost', textContent: 'Re-run AI triage' });
+      retriage.onclick = async () => {
+        retriage.disabled = true;
+        retriage.textContent = 'Running…';
+        await fetch(`/api/reports/${id}/triage`, { method: 'POST' });
+        await refresh();
+        openDetail(id);
+      };
+      const pay = el('button', { className: 'primary', textContent: `Approve & pay ${money(r.policy_amount)}`, disabled: true,
+        title: 'PayPal payout is connected in the next step' });
+
+      const children = [
+        el('button', { className: 'ghost close', textContent: 'Close', onclick: closeDetail }),
+        r.screenshot ? el('img', { src: r.screenshot, alt: 'Game screenshot captured when the player opened the report' }) : null,
+        el('h2', { textContent: r.title || (st === 'Triaging…' ? 'Waiting for AI triage…' : 'Not triaged yet') }),
+        el('div', { className: 'chips' }, badge(st, TONE[st]), r.severity ? badge(r.severity, `sev-${r.severity}`) : null,
+          r.category ? badge(r.category, 'st-wait') : null, ...flags.map((f) => badge(f.replaceAll('_', ' '), 'st-blocked'))),
+        el('h3', { textContent: 'Player said' }), el('blockquote', { textContent: r.text }),
+        el('h3', { textContent: 'Steps to reproduce' }), steps,
+        dup,
+        r.reasoning ? el('h3', { textContent: 'AI note' }) : null, r.reasoning ? el('p', { textContent: r.reasoning }) : null,
+        el('h3', { textContent: 'Bounty' }),
+        el('div', { className: 'amount', textContent: r.triaged ? money(r.policy_amount) : '—' }),
+        el('p', { className: 'muted', textContent: `Set by policy. AI suggested ${money(r.ai_amount)}${r.model ? ` (${r.model})` : ''}.` }),
+        el('details', {}, el('summary', { textContent: 'Console' }), el('pre', { textContent: r.console || '(empty)' })),
+        el('details', {}, el('summary', { textContent: 'Game state' }), el('pre', { textContent: r.state_json || 'null' })),
+        el('div', { className: 'row' }, pay, retriage),
+      ];
+      const wasHidden = panel.hidden;
+      panel.replaceChildren(...children.filter(Boolean));
+      panel.hidden = false;
+      $('#main').classList.add('open');
+      // Stacked layout: bring the panel into view when it first opens.
+      if (wasHidden && matchMedia('(max-width: 960px)').matches) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function closeDetail() {
+      current = null;
+      $('#detail').hidden = true;
+      $('#main').classList.remove('open');
+      grid.deselectAll();
+    }
+    addEventListener('keydown', (e) => { if (e.key === 'Escape' && current) closeDetail(); });
+
+    refresh();
+    setInterval(refresh, 4000);
+  </script>
+</body>
+</html>
