@@ -64,7 +64,7 @@ npm run smoke   # real PayPal sandbox: token, order, payout (needs .dev.vars)
 
 No login is needed on the demo site; everything runs in the PayPal sandbox.
 
-1. Open https://patchpay.cosmoscan-preview.workers.dev/dev and click **Reset demo**. Six sample reports load and go through live AI triage (a few seconds).
+1. Open https://patchpay.cosmoscan-preview.workers.dev/dev and click **Reset demo**. Five sample reports load and go through live AI triage (a few seconds), including a duplicate pair and a manipulation attempt.
 2. If the bounty pool is below $10, open `/fund` and pay with any **PayPal sandbox** buyer account, or the "Debit or Credit Card" button with a [PayPal sandbox test card](https://developer.paypal.com/tools/sandbox/card-testing/).
 3. Back on `/dev`, open a **Ready to pay** row and click **Approve & pay**. Status moves to **Paid** once PayPal confirms the payout.
 4. Try your own report: open `/play`, keep **Demo bug** on, move right until the game freezes, click **Report a bug**. Add your sandbox personal account email if you want to receive the bounty.

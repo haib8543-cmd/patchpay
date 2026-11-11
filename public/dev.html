@@ -235,7 +235,7 @@
     addEventListener('keydown', (e) => { if (e.key === 'Escape' && current) closeDetail(); });
 
     $('#reset').onclick = async () => {
-      if (!confirm('Delete all reports and load 6 sample reports? The bounty pool balance is kept.')) return;
+      if (!confirm('Delete all reports and load the sample reports? The bounty pool balance is kept.')) return;
       const btn = $('#reset');
       btn.disabled = true;
       const res = await fetch('/api/demo/reset', { method: 'POST' });
