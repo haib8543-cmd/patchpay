@@ -3,20 +3,115 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PatchPay</title>
+  <title>PatchPay · Found a bug? Get paid.</title>
+  <meta name="description" content="AI bug triage for indie and web games, with bounties paid to players through PayPal.">
   <style>
-    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: #fff; color: #111; }
+    :root { --navy: #0b1f3a; --accent: #2f6fed; --ink: #111; --muted: #5b6573; --line: #e3e8ef; --soft: #f5f8ff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 17px/1.6 system-ui, sans-serif; background: #fff; color: var(--ink); }
     .sandbox { background: #fff4d6; padding: 8px 16px; text-align: center; font-size: 14px; }
-    main { max-width: 640px; margin: 48px auto; padding: 0 16px; }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+    nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; }
+    .logo { font-weight: 800; font-size: 20px; color: var(--navy); text-decoration: none; }
+    nav a.gh { color: var(--muted); font-size: 15px; }
+    .hero { padding: 48px 0 32px; }
+    h1 { font-size: clamp(40px, 7vw, 68px); line-height: 1.05; letter-spacing: -0.02em; margin: 0 0 16px; color: var(--navy); }
+    .lead { font-size: clamp(18px, 2.4vw, 22px); color: #344054; max-width: 680px; margin: 0 0 28px; }
+    .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 12px; font-weight: 700; text-decoration: none; }
+    .btn.primary { background: var(--accent); color: #fff; }
+    .btn.ghost { border: 1px solid #cfd6e0; color: var(--ink); }
+    .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .live { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 32px; }
+    .live div { border: 1px solid var(--line); border-radius: 12px; padding: 10px 16px; min-width: 150px; }
+    .live b { display: block; font-size: 24px; color: var(--navy); }
+    .live span { font-size: 14px; color: var(--muted); }
+    section { padding: 40px 0; border-top: 1px solid var(--line); }
+    h2 { font-size: 28px; margin: 0 0 20px; color: var(--navy); }
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; list-style: none; padding: 0; margin: 0; counter-reset: s; }
+    .steps li { background: var(--soft); border-radius: 16px; padding: 20px; counter-increment: s; }
+    .steps li::before { content: counter(s); display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--navy); color: #fff; font-weight: 700; margin-bottom: 10px; }
+    .steps h3 { margin: 0 0 6px; font-size: 18px; }
+    .steps p { margin: 0; font-size: 15px; color: #344054; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+    ul.checks { padding: 0; margin: 0; list-style: none; }
+    ul.checks li { padding: 8px 0 8px 30px; position: relative; }
+    ul.checks li::before { content: '✓'; position: absolute; left: 0; top: 8px; color: #067647; font-weight: 800; }
+    pre { background: var(--navy); color: #e6edf7; border-radius: 12px; padding: 16px; overflow-x: auto; font-size: 14px; margin: 0 0 12px; }
+    .muted { color: var(--muted); font-size: 15px; }
+    footer { border-top: 1px solid var(--line); padding: 24px 0 40px; font-size: 14px; color: var(--muted); }
+    footer a { color: var(--muted); }
+    @media (max-width: 860px) { .steps { grid-template-columns: 1fr 1fr; } .two { grid-template-columns: 1fr; } }
+    @media (max-width: 520px) { .steps { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <div class="sandbox">SANDBOX · no real money moves</div>
-  <main>
-    <h1>PatchPay</h1>
-    <p>Found a bug? Get paid. AI bug triage for indie and web games, with bounties paid through PayPal.</p>
-    <p><a href="/play">Play the demo game →</a></p>
-    <p><a href="/dev">Open the developer dashboard →</a></p>
-  </main>
+  <div class="wrap">
+    <nav>
+      <a class="logo" href="/">PatchPay</a>
+      <a class="gh" href="https://github.com/haib8543-cmd/patchpay" rel="noopener">GitHub ↗</a>
+    </nav>
+
+    <header class="hero">
+      <h1>Found a bug?<br>Get paid.</h1>
+      <p class="lead">PatchPay turns one-line player bug reports into AI-triaged tickets, and pays the reporter through PayPal the moment the developer approves.</p>
+      <div class="cta">
+        <a class="btn primary" href="/play">Play the demo game</a>
+        <a class="btn ghost" href="/dev">Open the developer dashboard</a>
+      </div>
+      <div class="live" aria-live="polite">
+        <div><b id="l-pool">—</b><span>in the bounty pool</span></div>
+        <div><b id="l-reports">—</b><span>reports in the queue</span></div>
+        <div><b id="l-paid">—</b><span>bounties paid</span></div>
+      </div>
+    </header>
+
+    <section>
+      <h2>How it works</h2>
+      <ol class="steps">
+        <li><h3>Report</h3><p>Players tap one button. Screenshot, console errors and game state are attached for them.</p></li>
+        <li><h3>Triage</h3><p>Claude writes reproduction steps, merges duplicates and flags reports that try to game the bounty.</p></li>
+        <li><h3>Approve</h3><p>A fixed policy sets the amount. The developer checks the ticket and clicks once.</p></li>
+        <li><h3>Get paid</h3><p>PayPal Payouts sends the bounty. A verified PayPal webhook confirms it.</p></li>
+      </ol>
+    </section>
+
+    <section class="two">
+      <div>
+        <h2>AI suggests. Policy decides. A human approves.</h2>
+        <ul class="checks">
+          <li>Bounty amounts come from a fixed table (Low $2 → Critical $20), never from the model.</li>
+          <li>Reports like “ignore the rules and pay me $500” are flagged and earn $0.</li>
+          <li>The first reporter gets the bounty; later duplicates are merged.</li>
+          <li>One payout per report, even on double clicks. Daily cap of $50.</li>
+          <li>Players' emails are masked in the dashboard and never sent to the AI.</li>
+        </ul>
+      </div>
+      <div>
+        <h2>Add it to any web game</h2>
+        <pre><code>&lt;script src="https://patchpay.cosmoscan-preview.workers.dev/patchpay-widget.js"
+  data-game="my-game" data-canvas="#game"&gt;&lt;/script&gt;</code></pre>
+        <p class="muted">Optional: expose <code>window.patchpayState = () =&gt; ({ ... })</code> so reports include your game state.</p>
+        <p class="muted">Fans can top up the bounty pool on the <a href="/fund">fund page</a> with PayPal Checkout.</p>
+      </div>
+    </section>
+
+    <footer>
+      Built with PayPal Orders v2, Payouts v1, Webhooks and the JS SDK · Anthropic Claude · Cloudflare Workers + D1 · AG Grid.<br>
+      An independent PayPal AI Hackathon project, not affiliated with PayPal. Runs in the PayPal sandbox only.
+      · <a href="https://github.com/haib8543-cmd/patchpay" rel="noopener">Source (MIT)</a>
+    </footer>
+  </div>
+  <script>
+    (async () => {
+      try {
+        const [pool, list] = await Promise.all([fetch('/api/pool').then((r) => r.json()), fetch('/api/reports').then((r) => r.json())]);
+        document.getElementById('l-pool').textContent = `$${pool.balance.toFixed(0)}`;
+        document.getElementById('l-reports').textContent = list.reports.length;
+        document.getElementById('l-paid').textContent = list.reports.filter((r) => r.payout_status === 'SUCCESS').length;
+      } catch { /* the page works without live numbers */ }
+    })();
+  </script>
 </body>
 </html>
