@@ -205,7 +205,7 @@
         r.screenshot ? el('img', { src: r.screenshot, alt: 'Game screenshot captured when the player opened the report' }) : null,
         el('h2', { textContent: r.title || (st === 'Triaging…' ? 'Waiting for AI triage…' : 'Not triaged yet') }),
         el('div', { className: 'chips' }, badge(st, TONE[st]), r.game === 'sample' ? badge('sample report', 'st-wait') : null, r.severity ? badge(r.severity, `sev-${r.severity}`) : null,
-          r.category ? badge(r.category, 'st-wait') : null, ...flags.map((f) => badge(f.replaceAll('_', ' '), 'st-blocked'))),
+          r.category ? badge(r.category, 'st-wait') : null, ...flags.map((f) => badge(f.replaceAll('_', ' '), f === 'needs_more_info' ? 'st-wait' : 'st-blocked'))),
         el('h3', { textContent: 'Player said' }), el('blockquote', { textContent: r.text }),
         el('h3', { textContent: 'Steps to reproduce' }), steps,
         dup,
