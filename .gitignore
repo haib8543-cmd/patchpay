@@ -4,3 +4,4 @@ node_modules/
 .env
 *.log
 docs/SUBMISSION_KIT.md
+docs/DEVPOST.md
